@@ -1,2 +1,2 @@
-# mazerunner
-A Maze Generator and Solving Algorithm written in Python
+# Pacman
+Pacman game rewritten in Python
