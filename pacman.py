@@ -3,10 +3,8 @@
 
 
 # IMPORTS
-from doctest import FAIL_FAST
-from queue import Empty
-from turtle import screensize
-from unicodedata import name
+from tabnanny import check
+from threading import Thread
 import pygame
 import sys
 import math
@@ -26,11 +24,11 @@ MAZE_HEIGHT = 31*TILESIZE
 WINDOW_WIDTH = MAZE_WIDTH + 2*PADDING
 WINDOW_HEIGHT = MAZE_HEIGHT + 2*PADDING
 
-pacmanspawn = (13.5, 23)
-ghostspawn = [(11, 13), (16, 13), (11, 15), (16, 15)]
+pacmanSpawn = (13.5, 23)
+ghostSpawn = [(11, 13), (16, 13), (11, 15), (16, 15)]
 
-# gameboard size = 28*31
-gameboard = [
+# gameBoard size = 28*31
+gameBoard = [
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
     [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0],
@@ -43,10 +41,10 @@ gameboard = [
     [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 3, 3, 3, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 2, 2, 2, 2, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 2, 2, 2, 2, 2, 2, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 2, 2, 2, 2, 2, 2, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
@@ -78,14 +76,17 @@ class Entity:
     """Entities class is used as a base class for all entities, including their coordinates, """
 
     def __init__(self, app, coord, sprite, name):
-        self.app = app
-        self.home = coord
-        self.sprite = sprite
-        self.name = name
+        self.app, self.home, self.sprite, self.name = app, coord, sprite, name
         self.reset()
         self.velocity = [0, 0]
-        self.gridcoords = None
-        self.nextmovement = "NONE"
+        self.gridCoords = self.inCells(self.coord)
+        self.nextMovement = "NONE"
+        self.lastGrid = [[0, 0]]
+        # self.moveCooldown = 0
+        if name == "Blinky":
+            self.ghost = True
+        else:
+            self.ghost = False
 
     def render(self):
         self.app.screen.blit(self.activeSprite, (PADDING + self.coord[0]-TILESIZE//2,  PADDING + self.coord[1]-TILESIZE//2))
@@ -96,43 +97,53 @@ class Entity:
         self.currentAnim = 0
         self.activeSpriteState = 0
         self.activeSprite = self.sprite[self.currentAnim][self.activeSpriteState]
-        self.justspawned = True
+        self.justSpawned = True
         self.velocity = [0, 0]
 
-    def queuemovement(self, direction):
-        self.nextmovement = direction
-        if self.justspawned:
-            if self.nextmovement == "LEFT ":
+    def queueMovement(self, direction):
+        self.nextMovement = direction
+        if self.justSpawned:
+            if self.nextMovement == "LEFT ":
                 self.velocity = [-SPEED, 0]
-                self.activeSpriteState = 3
-            elif self.nextmovement == "RIGHT":
+                self.activeSpriteState = 2
+            elif self.nextMovement == "RIGHT":
                 self.velocity = [SPEED, 0]
-                self.activeSpriteState = 1
-            self.justspawned = False
+                self.activeSpriteState = 4
+            self.justSpawned = False
 
-    def move(self, gridcoords):
-        self.gridcoords = gridcoords
-        match self.nextmovement:
+    def move(self, gridCoords):
+        self.gridCoords[0] = []
+        self.gridCoords[0] = gridCoords
+        match self.nextMovement:
             case "UP   ":
-                if gameboard[gridcoords[1]-1][gridcoords[0]] == 1:
+                if gameBoard[gridCoords[1]-1][gridCoords[0]] == 1:
                     self.velocity = [0, -SPEED]
                     self.coord[0] = int(self.coord[0]//TILESIZE*TILESIZE+TILESIZE//2)
-                    self.activeSpriteState = 4
+                    self.activeSpriteState = 1
             case "DOWN ":
-                if gameboard[gridcoords[1]+1][gridcoords[0]] == 1:
+                if gameBoard[gridCoords[1]+1][gridCoords[0]] == 1:
                     self.velocity = [0, SPEED]
                     self.coord[0] = int(self.coord[0]//TILESIZE*TILESIZE+TILESIZE//2)
-                    self.activeSpriteState = 2
+                    self.activeSpriteState = 3
             case "LEFT ":
-                if gameboard[gridcoords[1]][gridcoords[0]-1] == 1:
+                if gameBoard[gridCoords[1]][gridCoords[0]-1] == 1:
                     self.velocity = [-SPEED, 0]
                     self.coord[1] = int(self.coord[1]//TILESIZE*TILESIZE+TILESIZE//2)
-                    self.activeSpriteState = 3
+                    self.activeSpriteState = 2
             case "RIGHT":
-                if gameboard[gridcoords[1]][gridcoords[0]+1] == 1:
+                if gameBoard[gridCoords[1]][gridCoords[0]+1] == 1:
                     self.velocity = [SPEED, 0]
                     self.coord[1] = int(self.coord[1]//TILESIZE*TILESIZE+TILESIZE//2)
-                    self.activeSpriteState = 1
+                    self.activeSpriteState = 4
+
+    def ghostMove(self, Ai):
+        if not self.ghost:
+            return False
+        if self.lastGrid != self.gridCoords:
+            self.queueMovement(Ai.chase())
+            debug(self.gridCoords)
+            debug(Ai.chase())
+            self.lastGrid = self.gridCoords
 
     def animate(self):
         self.currentAnim += 1
@@ -140,25 +151,80 @@ class Entity:
         self.activeSprite = self.sprite[self.currentAnim//15][self.activeSpriteState]
         pass
 
-    def incells(self, coords):
+    def inCells(self, coords):
         cells = []
-        poschecks = [[coords[0], coords[1]-TILESIZE//2+1], [coords[0]-TILESIZE//2+1, coords[1]], [coords[0], coords[1]+TILESIZE//2-1], [coords[0]+TILESIZE//2-1, coords[1]]]
-        for i in poschecks:
+        posChecks = [[coords[0], coords[1]-TILESIZE//2+1], [coords[0]-TILESIZE//2+1, coords[1]], [coords[0], coords[1]+TILESIZE//2-1], [coords[0]+TILESIZE//2-1, coords[1]]]
+        for i in posChecks:
             if not [int(i[0]//TILESIZE), int(i[1]//TILESIZE)] in cells:
                 cells.append([int(i[0]//TILESIZE), int(i[1]//TILESIZE)])
         return cells
 
-    def tick(self):
-        tempgridcells = self.incells(self.coord)
-        if len(tempgridcells) == 1:
-            self.move(tempgridcells[0])
-        tempcoord = [int(self.coord[0]+self.velocity[0]), int(self.coord[1]+self.velocity[1])]
-        tempgridcells = self.incells(tempcoord)
-        for locations in tempgridcells:
-            if gameboard[locations[1]][locations[0]] == 0:
+    def tick(self, Ai=None):
+        tempGridCells = self.inCells(self.coord)
+        if len(tempGridCells) == 1:
+            self.ghostMove(Ai)
+            self.move(tempGridCells[0])
+        tempCoord = [int(self.coord[0]+self.velocity[0]), int(self.coord[1]+self.velocity[1])]
+        tempGridCells = self.inCells(tempCoord)
+        for locations in tempGridCells:
+            if gameBoard[locations[1]][locations[0]] == 0:
                 return False
-        self.coord = tempcoord
+        self.coord = tempCoord
         self.animate()
+
+##########################################################################
+############################ AI ENGINE ###################################
+##########################################################################
+
+
+class AI_Engine:
+    """AI Engine"""
+
+    def __init__(self, ghost, pacman, targetMode):
+        self.pac = pacman
+        self.ghost = ghost
+        self.targetMode = 1
+
+    # Check all sides
+    # Remove backside
+    # Check which is closer
+    #
+    def chase(self):
+
+        def distToPacman(location):
+            if self.targetMode == 1:
+                target = self.pac.coord
+            return math.sqrt(((target[0]-location[0])**2) + ((target[1]-location[1])**2))
+        gridDistance = [distToPacman((self.ghost.coord[0], self.ghost.coord[1]-TILESIZE)), distToPacman((self.ghost.coord[0]-TILESIZE, self.ghost.coord[1])),
+                        distToPacman((self.ghost.coord[0], self.ghost.coord[1]+TILESIZE)), distToPacman((self.ghost.coord[0]+TILESIZE, self.ghost.coord[1]))]
+        gC = [self.ghost.gridCoords[0][1], self.ghost.gridCoords[0][0]]
+        grid = [gameBoard[gC[0]-1][gC[1]], gameBoard[gC[0]][gC[1]-1], gameBoard[gC[0]+1][gC[1]], gameBoard[gC[0]][gC[1]+1]]
+        grid[(self.ghost.activeSpriteState - 3) % 4] = 0
+        bestDirection = None
+        bestDistance = 1000
+        for i in range(0, 4):
+            if grid[i] == 1 and gridDistance[i] < bestDistance:
+                bestDistance = gridDistance[i]
+                bestDirection = i
+
+        if bestDirection == 0:
+            go = "UP   "
+        elif bestDirection == 1:
+            go = "LEFT "
+        elif bestDirection == 2:
+            go = "DOWN "
+        elif bestDirection == 3:
+            go = "RIGHT"
+        return go
+
+    def scatter(self):
+        pass
+
+    def frightened(self):
+        pass
+
+    def eaten(self):
+        pass
 
 ##########################################################################
 ############################ GAME CLASS ##################################
@@ -182,8 +248,9 @@ class Game:
         self.updateState("startup")
 
         ###Entities###
-        self.pacman = Entity(self, pacmanspawn, self.get_sprite(pygame.image.load(PACMAN), 32, 32, 5, 2), "Pacman")
-        self.blinky = Entity(self, ghostspawn[0], self.get_sprite(pygame.image.load(PACMAN), 32, 32, 5, 2), "Blinky")
+        self.pacman = Entity(self, pacmanSpawn, self.get_sprite(pygame.image.load(PACMAN), 32, 32, 5, 2), "Pacman")
+        self.blinky = Entity(self, ghostSpawn[0], self.get_sprite(pygame.image.load(BLINKY), 32, 32, 5, 2), "Blinky")
+        self.blinkyAI = AI_Engine(self.blinky, self.pacman, 1)
 
 ############################ HELPER METHODS ##################################
 
@@ -196,7 +263,7 @@ class Game:
             return
         for x in range(0, MAZE_WIDTH, TILESIZE):
             for y in range(0, MAZE_HEIGHT, TILESIZE):
-                match gameboard[y//TILESIZE][x//TILESIZE]:
+                match gameBoard[y//TILESIZE][x//TILESIZE]:
                     case 1:
                         self.overlay.set_alpha(50)
                         self.overlay.fill(GREEN)
@@ -211,20 +278,20 @@ class Game:
 
     def renderText(self, text, screen, pos, colour, center=False):
         string = self.font.render(text, False, colour)
-        string_size = string.get_size()
+        stringSize = string.get_size()
         if pos[0] < 0:
-            pos[0] = WINDOW_WIDTH+pos[0]-string_size[0]
+            pos[0] = WINDOW_WIDTH+pos[0]-stringSize[0]
         if pos[1] < 0:
-            pos[1] = WINDOW_HEIGHT+pos[1]-string_size[1]
+            pos[1] = WINDOW_HEIGHT+pos[1]-stringSize[1]
         if center:
-            pos = [pos[0]-string_size[0]//2, pos[1]-string_size[1]//2]
+            pos = [pos[0]-stringSize[0]//2, pos[1]-stringSize[1]//2]
         screen.blit(string, pos)
 
 ########################### INIT METHODS ####################################
 
-    def get_sprite(self, sheet, w, h, frames, animationframes):
+    def get_sprite(self, sheet, w, h, frames, animationFrames):
         allframes = []
-        for anim in range(0, animationframes, 1):
+        for anim in range(0, animationFrames, 1):
             images = []
             for frame in range(0, frames, 1):
                 image = pygame.Surface((w, h)).convert_alpha()
@@ -244,23 +311,28 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 match event.key:
                     case pygame.K_d:
-                        self.pacman.queuemovement("RIGHT")
+                        self.pacman.queueMovement("RIGHT")
                     case pygame.K_a:
-                        self.pacman.queuemovement("LEFT ")
+                        self.pacman.queueMovement("LEFT ")
                     case pygame.K_s:
-                        self.pacman.queuemovement("DOWN ")
+                        self.pacman.queueMovement("DOWN ")
                     case pygame.K_w:
-                        self.pacman.queuemovement("UP   ")
+                        self.pacman.queueMovement("UP   ")
+                    case pygame.K_RIGHT:
+                        self.blinky.queueMovement("RIGHT")
+                    case pygame.K_LEFT:
+                        self.blinky.queueMovement("LEFT ")
+                    case pygame.K_DOWN:
+                        self.blinky.queueMovement("DOWN ")
+                    case pygame.K_UP:
+                        self.blinky.queueMovement("UP   ")
                     case pygame.K_q:
                         self.running = False
                     case pygame.K_e:
-                        gridcells = self.pacman.incells(self.pacman.coord)
-                        for value in gridcells:
-                            debug(str(value)+": "+str(gameboard[value[1]][value[0]]))
+                        self.blinkyAI.chase()
                     case pygame.K_r:
                         self.pacman.reset()
-                    case pygame.K_v:
-                        debug(self.pacman.velocity)
+                        self.blinky.reset()
 
     def renderGame(self):
         self.screen.fill(BLACK)
@@ -268,12 +340,12 @@ class Game:
         self.renderGrid()
         self.pacman.render()
         self.blinky.render()
-        self.renderText("NEXT MOVEMENT: "+self.pacman.nextmovement, self.screen, [-PADDING, -PADDING//4], RED)
+        self.renderText("NEXT MOVEMENT: "+self.pacman.nextMovement, self.screen, [-PADDING, -PADDING//4], RED)
         pygame.display.update()
-        pass
 
     def tick(self):
         self.pacman.tick()
+        self.blinky.tick(self.blinkyAI)
         self.renderGame()
 
     def run(self):
