@@ -1,9 +1,4 @@
-# GOAL FOR TODAY
-# -Working UI
-
-
 # IMPORTS
-from tabnanny import check
 from threading import Thread
 import pygame
 import sys
