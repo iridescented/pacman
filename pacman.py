@@ -82,7 +82,7 @@ class Entity:
         self.gridCoords = self.inCells(self.coord)
         self.nextMovement = "NONE"
         self.lastGrid = [[0, 0]]
-        # self.moveCooldown = 0
+        self.moveCooldown = 0
         if name == "Blinky":
             self.ghost = True
         else:
@@ -139,11 +139,13 @@ class Entity:
     def ghostMove(self, Ai):
         if not self.ghost:
             return False
-        if self.lastGrid != self.gridCoords:
+        if self.moveCooldown == 0:
+            oldMovement = self.nextMovement
             self.queueMovement(Ai.chase())
-            debug(self.gridCoords)
-            debug(Ai.chase())
-            self.lastGrid = self.gridCoords
+            if self.nextMovement != oldMovement:
+                self.moveCooldown = 2
+        else:
+            self.moveCooldown -= 1
 
     def animate(self):
         self.currentAnim += 1
@@ -161,8 +163,8 @@ class Entity:
 
     def tick(self, Ai=None):
         tempGridCells = self.inCells(self.coord)
+        self.ghostMove(Ai)
         if len(tempGridCells) == 1:
-            self.ghostMove(Ai)
             self.move(tempGridCells[0])
         tempCoord = [int(self.coord[0]+self.velocity[0]), int(self.coord[1]+self.velocity[1])]
         tempGridCells = self.inCells(tempCoord)
