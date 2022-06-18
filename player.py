@@ -1,11 +1,5 @@
-from this import d
-from settings import DEBUG_ENABLED, PADDING, GAMEBOARD, PACMAN, SCALE, BLACK, TILESIZE, SPEED
+from settings import debug, PADDING, GAMEBOARD, SCALE, BLACK, TILESIZE, SPEED
 import pygame
-
-
-def debug(string):
-    if DEBUG_ENABLED == True:
-        print(string)
 
 
 def STS(x, y):
@@ -14,48 +8,68 @@ def STS(x, y):
 
 
 def gameboard(grid):
-    return GAMEBOARD[int(grid[0])][int(grid[1])]
+    return GAMEBOARD[int(grid[1])][int(grid[0])]
 ##########################################################################
 ############################ Player CLASS ################################
 ##########################################################################
 
 
 class Player:
-    """Redesign of the Entity class into a Player class"""
+    """Player Class for all entities
+    __init__()
+    __getSprite()
+    getGridLoc()
+    __animate()
+    __isCentered()
+    __move()
+    __canMove
+    getGridInfo()
+    setAnimationDetails()
+    isAtJunction
+    queueMovement()
+    reset()
+    render()
+    tick()
+    """
 
-    def __init__(self, name, app, home, sprite):
-        self.name, self.app, self.home = name, app, home
-        self.sprite = self.__getSprite(pygame.image.load(sprite), 32, 32, 5, 2)
+    def __init__(self, name, app, home, sprite, ghostNo=0, ghostColor=None):
+        self.name, self.app, self.home, self.ghostNo, self.ghostColor = name, app, home, ghostNo, ghostColor
+        self.sprite = self.__getSprite(pygame.image.load(sprite), 32, 32, 5, 2, ghostNo)
         self.reset()
         self.setAnimDetails(20, (0.75, 0.15))
+        self.ghost = False
+        if name != "Pacman":
+            self.ghost = True
 
 ############################ SETUP METHODS ###################################
 
     def setAnimDetails(self, totalFrames, framePercent):
+        """Setup for Animation Values"""
         self.animTotalFrames, self.animFramePercent = totalFrames, framePercent
 
 ############################ HELPER METHODS ##################################
 
-    def __getSprite(self, sheet, w, h, frames, animationFrames):
+    def __getSprite(self, sheet, w, h, frames, animationFrames, startPos):
         """Generates Sprite array from a Sprite Sheet"""
         allframes = []
         for anim in range(0, animationFrames, 1):
             images = []
             for frame in range(0, frames, 1):
                 image = pygame.Surface((w, h)).convert_alpha()
-                image.blit(sheet, (0, 0), (frame*w, anim*h, w, h))
+                image.blit(sheet, (0, 0), (frame*w, ((startPos * 2 + anim) * h), w, h))
                 image = pygame.transform.scale(image, (SCALE, SCALE))
                 image.set_colorkey(BLACK)
                 images.append(image)
             allframes.append(images)
         return allframes
 
-    def __getGridLoc(self):
+    def getGridLoc(self):
+        """Returns all 5 grid locations centered around player position"""
         currentGrid = [self.loc[0]//TILESIZE, self.loc[1]//TILESIZE]
-        upGrid = [(self.loc[0]-TILESIZE)//TILESIZE, self.loc[1]//TILESIZE]
-        leftGrid = [self.loc[0]//TILESIZE, (self.loc[1]-TILESIZE)//TILESIZE]
-        downGrid = [(self.loc[0]+TILESIZE)//TILESIZE, self.loc[1]//TILESIZE]
-        rightGrid = [self.loc[0]//TILESIZE, (self.loc[1]+TILESIZE)//TILESIZE]
+        leftGrid = [(self.loc[0]-TILESIZE)//TILESIZE, self.loc[1]//TILESIZE]
+        rightGrid = [(self.loc[0]+TILESIZE)//TILESIZE, self.loc[1]//TILESIZE]
+        upGrid = [self.loc[0]//TILESIZE, (self.loc[1]-TILESIZE)//TILESIZE]
+        downGrid = [self.loc[0]//TILESIZE, (self.loc[1]+TILESIZE)//TILESIZE]
         return [currentGrid, upGrid, leftGrid, downGrid, rightGrid]
 
     def __animate(self):
@@ -64,29 +78,78 @@ class Player:
         self.spriteAnim %= self.animTotalFrames
         self.drawnSprite = self.sprite[int(self.spriteAnim//(self.animFramePercent[0]*self.animTotalFrames))][self.activeSprite]
 
+    def __isCentered(self):
+        """Returns True if player is at center of Tile"""
+        if (self.loc[0] % TILESIZE == TILESIZE//2 and self.loc[1] % TILESIZE == TILESIZE//2):
+            return True
+        return False
+
+    def __canMove(self, grid):
+        """Returns whether the player can move or not to that tile"""
+        if grid == [28, 14] or grid == [-1, 14]:
+            return True
+        elif grid == [28, 13] or grid == [-1, 13] or grid == [28, 15] or grid == [-1, 15]:
+            return False
+        elif 2 >= gameboard(grid) > 0:
+            return True
+        elif self.ghost:
+            currentGrid = [self.loc[0]//TILESIZE, self.loc[1]//TILESIZE]
+            if gameboard(currentGrid) == gameboard(grid) == 3:
+                return True
+        else:
+            return False
+
+    def getGridInfo(self):
+        grid = self.getGridLoc()
+        gridInfo = []
+        for i in grid:
+            gridInfo.append(self.__canMove(i))
+        return gridInfo
+
+    def isAtJunction(self):
+        """Returns true if player is at a junction"""
+        currentGrid = [self.loc[0]//TILESIZE, self.loc[1]//TILESIZE]
+        if currentGrid == [28, 14] or currentGrid == [-1, 14]:
+            return False
+        if gameboard(currentGrid) == 2 or gameboard(currentGrid) == 3:
+            return True
+        return False
+
 ########################### UPDATE METHODS ####################################
 
-    def __move(self):
-        grid = self.__getGridLoc()
-        if gameboard(grid[self.nextMovement]) == 0:
-            return False
-        speed = (self.nextMovement > 2)*SPEED - (self.nextMovement < 3)*SPEED
-        self.velocity = [(self.nextMovement % 2 == 0)*speed, (self.nextMovement % 2 == 1)*speed]
-        if self.nextMovement % 2 == 1:
-            self.loc[0] = int(self.loc[0]//TILESIZE*TILESIZE+TILESIZE//2)
-        else:
-            self.loc[1] = int(self.loc[1]//TILESIZE*TILESIZE+TILESIZE//2)
-        self.activeSpriteState = self.nextMovement
-        self.loc = [int(self.loc[0]+self.velocity[0]), int(self.loc[1]+self.velocity[1])]
+    def __move(self, forced=False):
+        """Main logic for Movement, uses the value in queueMovement to move if the map permits it"""
+        grid = self.getGridLoc()
 
-    def queueMovement(self, direction):
+        if grid[0] == [28, 14] and self.__isCentered():
+            self.loc = [-16 + SPEED, 464]
+            return False
+        if grid[0] == [-1, 14] and self.__isCentered():
+            self.loc = [912 - SPEED, 464]
+            return False
+        if (not self.__isCentered() and self.loc != self.homeLoc) or (not self.__canMove(grid[self.nextMovement]) and self.__canMove(grid[self.activeSprite])):
+            self.loc = [int(self.loc[0]+self.velocity[0]), int(self.loc[1]+self.velocity[1])]
+            return False
+        elif not self.__canMove(grid[self.nextMovement]) and not self.__canMove(grid[self.activeSprite]):
+            return False
+        speed = (self.nextMovement > 2)*SPEED - (0 < self.nextMovement < 3)*SPEED
+        self.velocity = [(self.nextMovement % 2 == 0)*speed, (self.nextMovement % 2 == 1)*speed]
+        self.activeSprite = self.nextMovement
+        if not forced:
+            self.loc = [int(self.loc[0]+self.velocity[0]), int(self.loc[1]+self.velocity[1])]
+        return True
+
+    def queueMovement(self, direction, forced=False):
+        """Sets up next movement"""
         self.nextMovement = direction
+        if forced:
+            self.__move(True)
 
     def reset(self):
         """Resets the player to its initial state"""
-        self.spriteAnim, self.activeSprite, self.nextMovement, self.activeDirection, self.velocity = 0, 0, 0, 0, [0, 0]
+        self.spriteAnim, self.activeSprite, self.nextMovement, self.velocity = 0, 0, 0, [0, 0]
         self.drawnSprite = self.sprite[self.spriteAnim][self.activeSprite]
-        self.loc = [(self.home[0]+0.5) * TILESIZE, (self.home[1]+0.5)*TILESIZE]
+        self.homeLoc = self.loc = [(self.home[0]+0.5) * TILESIZE, (self.home[1]+0.5)*TILESIZE]
 
     def render(self):
         """Renders the player to the screen"""

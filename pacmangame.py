@@ -2,8 +2,10 @@
 from threading import Thread
 import pygame
 import sys
-from ai import *
-from player import *
+from ai import AiEngine
+from player import Player
+from settings import debug, PADDING, GAMEBOARD, BLACK, TILESIZE, FONTNAME, FONTSIZE, WINDOW_HEIGHT, WINDOW_WIDTH, MAZE_HEIGHT, MAZE_WIDTH, PACMAN, GHOST, OVERLAY_ENABLED, FPS, GREEN, RED, LGRAY, PINK, YELLOW, GHOSTCOLOR
+
 
 # DEFINITIONS
 
@@ -11,18 +13,13 @@ from player import *
 PACMAN_SPAWN = (13.5, 23)
 GHOST_SPAWN = [(11, 13), (16, 13), (11, 15), (16, 15)]
 
-
-def debug(string):
-    if DEBUG_ENABLED == True:
-        print(string)
-
 ##########################################################################
 ############################ GAME CLASS ##################################
 ##########################################################################
 
 
 class Game:
-    """Main Game Engine that is run
+    """Main Game Engine
     __init__()
     __updateState()
     __renderGrid()
@@ -48,8 +45,19 @@ class Game:
         self.__updateState("startup")
         ###Entities###
         self.pacman = Player("Pacman", self, PACMAN_SPAWN, PACMAN)
-        # self.blinky = Player(self, GHOST_SPAWN[0], self.__get_sprite(pygame.image.load(BLINKY), 32, 32, 5, 2), "Blinky")
-        # self.blinkyAI = AI_Engine(self.blinky, self.pacman, 1)
+        self.blinky = Player("Blinky", self, GHOST_SPAWN[0], GHOST, 0, GHOSTCOLOR[0])
+        self.inky = Player("Inky", self, GHOST_SPAWN[1], GHOST, 1, GHOSTCOLOR[1])
+        self.pinky = Player("Pinky", self, GHOST_SPAWN[2], GHOST, 2, GHOSTCOLOR[2])
+        self.clyde = Player("Clyde", self, GHOST_SPAWN[3], GHOST, 3, GHOSTCOLOR[3])
+        self.blinkyAI = AiEngine(self.blinky, self.pacman)
+        self.inkyAI = AiEngine(self.inky, self.pacman, self.blinky)
+        self.pinkyAI = AiEngine(self.pinky, self.pacman)
+        self.clydeAI = AiEngine(self.clyde, self.pacman)
+
+        self.blinkyAI.enableGhost()
+        # self.inkyAI.enableGhost()
+        # self.pinkyAI.enableGhost()
+        # self.clydeAI.enableGhost()
 
 ############################ HELPER METHODS ##################################
 
@@ -65,6 +73,12 @@ class Game:
         for x in range(0, MAZE_WIDTH, TILESIZE):
             for y in range(0, MAZE_HEIGHT, TILESIZE):
                 match GAMEBOARD[y//TILESIZE][x//TILESIZE]:
+                    case 3:
+                        self.overlay.set_alpha(50)
+                        self.overlay.fill(PINK)
+                    case 2:
+                        self.overlay.set_alpha(50)
+                        self.overlay.fill(YELLOW)
                     case 1:
                         self.overlay.set_alpha(50)
                         self.overlay.fill(GREEN)
@@ -98,21 +112,25 @@ class Game:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
                 match event.key:
-                    case pygame.K_w:
+                    case pygame.K_w | pygame.K_UP:
                         self.pacman.queueMovement(1)
-                    case pygame.K_a:
+                    case pygame.K_a | pygame.K_LEFT:
                         self.pacman.queueMovement(2)
-                    case pygame.K_s:
+                    case pygame.K_s | pygame.K_DOWN:
                         self.pacman.queueMovement(3)
-                    case pygame.K_d:
+                    case pygame.K_d | pygame.K_RIGHT:
                         self.pacman.queueMovement(4)
                     case pygame.K_q:
                         self.running = False
                     case pygame.K_e:
-                        self.blinkyAI.chase()
+                        pass
                     case pygame.K_r:
+                        self.__updateState("play")
                         self.pacman.reset()
-                        # self.blinky.reset()
+                        self.blinkyAI.reset()
+                        self.inkyAI.reset()
+                        self.pinkyAI.reset()
+                        self.clydeAI.reset()
 
     def __renderGame(self):
         """Updates the Screen"""
@@ -121,15 +139,32 @@ class Game:
         self.screen.blit(self.background, (PADDING, PADDING))
         self.__renderGrid()
         self.pacman.render()
-        # self.blinky.render()
+        self.blinky.render()
+        self.inky.render()
+        self.pinky.render()
+        self.clyde.render()
+        renderFix = pygame.Surface((TILESIZE, TILESIZE))
+        self.screen.blit(renderFix, (0, WINDOW_HEIGHT//2-3*TILESIZE//2))
+        self.screen.blit(renderFix, (WINDOW_WIDTH-TILESIZE, WINDOW_HEIGHT//2-3*TILESIZE//2))
         self.__renderText("NEXT MOVEMENT: "+movementDict[self.pacman.nextMovement], self.screen, [-PADDING, -PADDING//4], RED)
+        pygame.display.update()
+
+    def __renderEnd(self):
+        """Shows The Game Over Screen"""
+        self.screen.fill(BLACK)
+        self.__renderText("GAME OVER", self.screen, [WINDOW_WIDTH//2, WINDOW_HEIGHT//2], RED, True)
         pygame.display.update()
 
     def __tick(self):
         """Ran every tick"""
         self.pacman.tick()
-        # self.blinky.tick(self.blinkyAI)
+        self.blinkyAI.tick()
+        self.inkyAI.tick()
+        self.pinkyAI.tick()
+        self.clydeAI.tick()
         self.__renderGame()
+        if self.blinkyAI.endCond() | self.inkyAI.endCond() | self.pinkyAI.endCond() | self.clydeAI.endCond():
+            self.state = "gameover"
 
     def run(self):
         """Main Run sequence, runs everything"""
@@ -142,6 +177,9 @@ class Game:
             elif self.state == "play":
                 self.__checkEvents()
                 self.__tick()
+            elif self.state == "gameover":
+                self.__checkEvents()
+                self.__renderEnd()
             self.clock.tick(FPS)
             pygame.display.update()
         pygame.quit()
