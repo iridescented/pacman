@@ -1,6 +1,7 @@
-from settings import debug, TILESIZE
+from settings import debug, TILESIZE, SPEED
 from player import gameboard
 from math import sqrt
+from random import randint
 import pygame
 
 ##########################################################################
@@ -14,8 +15,9 @@ class AiEngine:
     def __init__(self, ghost, pac, ghost2=None):
         self.pac, self.ghost, self.ghost2 = pac, ghost, ghost2
         self.mode, self.time = "leavespawn", pygame.time.get_ticks()
-        self.scatterTime, self.chaseTime = 7, 20
+        self.scatterTime, self.chaseTime, self.frightenedTime = 7, 20, 8
         self.enabled = False
+        self.target = [0, 0]
 ############################ SETUP METHODS ###################################
 
     def enableGhost(self):
@@ -28,6 +30,8 @@ class AiEngine:
 
     def __shift(self, grid, direction, dist):
         return [grid[0] + (direction == 1)*dist - (direction == 3)*dist, grid[1] + (direction == 4)*dist - (direction == 2)*dist]
+
+
 ########################### UPDATE METHODS ####################################
 
     def __move(self, targetGrid):
@@ -42,15 +46,15 @@ class AiEngine:
         return bestDirection
 
     def __leaveSpawn(self):
-        self.target = (14, 0)
+        self.target = [14, 12]
         return self.__move(self.target)
 
     def __chase(self):
-        pacGrid = [self.pac.loc[0]//TILESIZE, self.pac.loc[1]//TILESIZE]
+        pacGrid = [self.pac.loc[0]//TILESIZE + 0.5, self.pac.loc[1]//TILESIZE + 0.5]
         self.target = pacGrid
         if self.ghost.ghostNo == 1:
             tempLoc = self.__shift(pacGrid, self.pac.activeSprite, 2)
-            distance = [self.ghost2.loc[0] - tempLoc[0], self.ghost2.loc[1] - tempLoc[1]]
+            distance = [self.ghost2.loc[0]//TILESIZE - tempLoc[0], self.ghost2.loc[1]//TILESIZE - tempLoc[1]]
             self.target = [self.ghost2.loc[0] + 2 * distance[0], self.ghost2.loc[1] + 2 * distance[1]]
         elif self.ghost.ghostNo == 2:
             self.target = self.__shift(pacGrid, self.pac.activeSprite, 4)
@@ -71,13 +75,25 @@ class AiEngine:
         return self.__move(self.target)
 
     def __frightened(self):
-        pass
+        direction = (self.ghost.activeSprite + 1) % 4+1
+        while direction == (self.ghost.activeSprite + 1) % 4+1:
+            direction = randint(1, 4)
+        return direction
 
     def __eaten(self):
-        pass
+        self.target = [13, 11]
+        return self.__move(self.target)
 
-    def renderTarget(self):
-        string = self.font.render("X", False, self.ghost.ghostColor)
+    def enableFrightened(self):
+        self.mode = "frightened"
+        self.time = pygame.time.get_ticks()
+        self.ghost.sprite = self.ghost.frightenedSprite
+        self.ghost.speed = 0.5*SPEED
+        self.ghost.queueMovement((self.ghost.activeSprite + 1) % 4+1, True)
+
+    def renderTarget(self, font, screen):
+        string = font.render("X", False, self.ghost.ghostColor)
+        screen.blit(string, (self.target[0]*TILESIZE + TILESIZE//2, self.target[1]*TILESIZE + TILESIZE//2))
 
     def reset(self):
         self.ghost.reset()
@@ -87,82 +103,59 @@ class AiEngine:
         pacGrid = [self.pac.loc[0]//TILESIZE, self.pac.loc[1]//TILESIZE]
         ghostGrid = [self.ghost.loc[0]//TILESIZE, self.ghost.loc[1]//TILESIZE]
         if pacGrid == ghostGrid:
-            return True
+            if self.mode == "frightened":
+                self.mode = "eaten"
+                self.time = pygame.time.get_ticks()
+                self.ghost.sprite = self.ghost.eatenSprite
+                self.ghost.speed = SPEED
+            elif self.mode != "eaten":
+                return True
         return False
 
     def tick(self):
-        if self.ghost.isAtJunction() and self.enabled:
+        if not self.enabled:
+            self.ghost.tick()
+            return
+        if self.mode == "eaten" and self.ghost.isCentered():
+            ghostGrid = self.ghost.getGridLoc()
+            if ghostGrid[0] == self.target:
+                self.ghost.queueMovement(3, True)
+                self.mode = "respawn"
+            else:
+                self.ghost.queueMovement(self.__eaten())
+        elif self.mode == "respawn":
+            if self.ghost.getGridLoc()[0] != self.target:
+                self.ghost.sprite = self.ghost.defaultSprite
+                self.mode = "leavespawn"
+        elif self.mode == "frightened":
+            if pygame.time.get_ticks() - self.time >= self.frightenedTime*1000:
+                self.ghost.speed = SPEED
+                self.ghost.sprite = self.ghost.defaultSprite
+                self.time = pygame.time.get_ticks()
+                self.mode = "chase"
+                self.ghost.queueMovement((self.ghost.activeSprite + 1) % 4+1, False)
+            elif self.ghost.isAtJunction():
+                self.ghost.queueMovement(self.__frightened())
+        elif self.ghost.isAtJunction():
             if self.mode == "leavespawn":
-                gridLoc = self.ghost.getGridLoc()
-                gridLoc = gameboard(gridLoc[0])
-                if gridLoc != 3:
+                ghostGrid = self.ghost.getGridLoc()
+                if ghostGrid[0][1] == 11:
                     self.mode = "scatter"
+                    self.__scatter(self.ghost.ghostNo)
                 else:
                     self.ghost.queueMovement(self.__leaveSpawn())
             elif self.mode == "scatter":
                 if pygame.time.get_ticks() - self.time >= self.scatterTime*1000:
                     self.time = pygame.time.get_ticks()
                     self.mode = "chase"
-                    self.ghost.queueMovement((self.ghost.activeSprite + 1) % 4+1, True)
+                    self.ghost.queueMovement((self.ghost.activeSprite + 1) % 4+1, False)
                 else:
                     self.ghost.queueMovement(self.__scatter(self.ghost.ghostNo))
             elif self.mode == "chase":
                 if pygame.time.get_ticks() - self.time >= self.chaseTime*1000:
                     self.time = pygame.time.get_ticks()
                     self.mode = "scatter"
-                    self.ghost.queueMovement((self.ghost.activeSprite + 1) % 4+1, True)
+                    self.ghost.queueMovement((self.ghost.activeSprite + 1) % 4+1, False)
                 else:
                     self.ghost.queueMovement(self.__chase())
         self.ghost.tick()
-
-
-'''
-class AI_Engine:
-    """AI Engine"""
-
-    def __init__(self, ghost, pacman, targetMode):
-        self.pac = pacman
-        self.ghost = ghost
-        self.targetMode = 1
-
-    # Check all sides
-    # Remove backside
-    # Check which is closer
-    #
-    def chase(self):
-
-        def distToPacman(location):
-            if self.targetMode == 1:
-                target = self.pac.coord
-            return sqrt(((target[0]-location[0])**2) + ((target[1]-location[1])**2))
-        gridDistance = [distToPacman((self.ghost.coord[0], self.ghost.coord[1]-TILESIZE)), distToPacman((self.ghost.coord[0]-TILESIZE, self.ghost.coord[1])),
-                        distToPacman((self.ghost.coord[0], self.ghost.coord[1]+TILESIZE)), distToPacman((self.ghost.coord[0]+TILESIZE, self.ghost.coord[1]))]
-        gC = [self.ghost.gridCoords[0][1], self.ghost.gridCoords[0][0]]
-        grid = [GAMEBOARD[gC[0]-1][gC[1]], GAMEBOARD[gC[0]][gC[1]-1], GAMEBOARD[gC[0]+1][gC[1]], GAMEBOARD[gC[0]][gC[1]+1]]
-        grid[(self.ghost.activeSpriteState - 3) % 4] = 0
-        bestDirection = None
-        bestDistance = 1000
-        for i in range(0, 4):
-            if grid[i] == 1 and gridDistance[i] < bestDistance:
-                bestDistance = gridDistance[i]
-                bestDirection = i
-
-        if bestDirection == 0:
-            go = "UP   "
-        elif bestDirection == 1:
-            go = "LEFT "
-        elif bestDirection == 2:
-            go = "DOWN "
-        elif bestDirection == 3:
-            go = "RIGHT"
-        return go
-
-    def scatter(self):
-        pass
-
-    def frightened(self):
-        pass
-
-    def eaten(self):
-        pass
-'''

@@ -4,6 +4,7 @@ import pygame
 import sys
 from ai import AiEngine
 from player import Player
+from dots import Dots
 from settings import debug, PADDING, GAMEBOARD, BLACK, TILESIZE, FONTNAME, FONTSIZE, WINDOW_HEIGHT, WINDOW_WIDTH, MAZE_HEIGHT, MAZE_WIDTH, PACMAN, GHOST, OVERLAY_ENABLED, FPS, GREEN, RED, LGRAY, PINK, YELLOW, GHOSTCOLOR
 
 
@@ -53,9 +54,15 @@ class Game:
         self.inkyAI = AiEngine(self.inky, self.pacman, self.blinky)
         self.pinkyAI = AiEngine(self.pinky, self.pacman)
         self.clydeAI = AiEngine(self.clyde, self.pacman)
+        self.dots = Dots(self.screen, self.pacman)
+
+        self.blinky.includeAI(self.blinkyAI)
+        self.inky.includeAI(self.inkyAI)
+        self.pinky.includeAI(self.pinkyAI)
+        self.clyde.includeAI(self.clydeAI)
 
         self.blinkyAI.enableGhost()
-        # self.inkyAI.enableGhost()
+        self.inkyAI.enableGhost()
         # self.pinkyAI.enableGhost()
         # self.clydeAI.enableGhost()
 
@@ -123,7 +130,10 @@ class Game:
                     case pygame.K_q:
                         self.running = False
                     case pygame.K_e:
-                        pass
+                        self.blinkyAI.enableFrightened()
+                        self.inkyAI.enableFrightened()
+                        self.pinkyAI.enableFrightened()
+                        self.clydeAI.enableFrightened()
                     case pygame.K_r:
                         self.__updateState("play")
                         self.pacman.reset()
@@ -131,6 +141,7 @@ class Game:
                         self.inkyAI.reset()
                         self.pinkyAI.reset()
                         self.clydeAI.reset()
+                        self.dots.reset()
 
     def __renderGame(self):
         """Updates the Screen"""
@@ -138,21 +149,34 @@ class Game:
         self.screen.fill(BLACK)
         self.screen.blit(self.background, (PADDING, PADDING))
         self.__renderGrid()
+        self.dots.render()
         self.pacman.render()
         self.blinky.render()
         self.inky.render()
         self.pinky.render()
         self.clyde.render()
+
         renderFix = pygame.Surface((TILESIZE, TILESIZE))
         self.screen.blit(renderFix, (0, WINDOW_HEIGHT//2-3*TILESIZE//2))
         self.screen.blit(renderFix, (WINDOW_WIDTH-TILESIZE, WINDOW_HEIGHT//2-3*TILESIZE//2))
         self.__renderText("NEXT MOVEMENT: "+movementDict[self.pacman.nextMovement], self.screen, [-PADDING, -PADDING//4], RED)
+
+        # self.blinkyAI.renderTarget(self.font, self.screen)
+        # self.inkyAI.renderTarget(self.font, self.screen)
+        # self.pinkyAI.renderTarget(self.font, self.screen)
+        # self.clydeAI.renderTarget(self.font, self.screen)
         pygame.display.update()
 
     def __renderEnd(self):
         """Shows The Game Over Screen"""
         self.screen.fill(BLACK)
         self.__renderText("GAME OVER", self.screen, [WINDOW_WIDTH//2, WINDOW_HEIGHT//2], RED, True)
+        pygame.display.update()
+
+    def __renderWin(self):
+        """Shows The Win Screen"""
+        self.screen.fill(BLACK)
+        self.__renderText("YOU WIN", self.screen, [WINDOW_WIDTH//2, WINDOW_HEIGHT//2], GREEN, True)
         pygame.display.update()
 
     def __tick(self):
@@ -163,8 +187,15 @@ class Game:
         self.pinkyAI.tick()
         self.clydeAI.tick()
         self.__renderGame()
+        if self.dots.enableFrightened():
+            self.blinkyAI.enableFrightened()
+            self.inkyAI.enableFrightened()
+            self.pinkyAI.enableFrightened()
+            self.clydeAI.enableFrightened()
         if self.blinkyAI.endCond() | self.inkyAI.endCond() | self.pinkyAI.endCond() | self.clydeAI.endCond():
             self.state = "gameover"
+        if self.pacman.endCond():
+            self.state = "win"
 
     def run(self):
         """Main Run sequence, runs everything"""
@@ -180,6 +211,9 @@ class Game:
             elif self.state == "gameover":
                 self.__checkEvents()
                 self.__renderEnd()
+            elif self.state == "win":
+                self.__checkEvents()
+                self.__renderWin()
             self.clock.tick(FPS)
             pygame.display.update()
         pygame.quit()
